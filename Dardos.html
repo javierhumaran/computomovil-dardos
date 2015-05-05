@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<!-- saved from url=(0095)http://www.theburningmonk.com/demos/shooting%20target/part%201/shooting_target_demo_part_1.html -->
+<html lang="en" class=" js flexbox canvas canvastext webgl no-touch geolocation postmessage websqldatabase indexedDb hashchange history draganddrop websockets rgba hsla multiplebgs backgroundsize borderimage borderradius boxshadow textshadow opacity cssanimations csscolumns cssgradients cssreflections csstransforms csstransforms3d csstransitions fontface video audio localstorage sessionstorage webworkers applicationcache svg inlinesvg smil svgclippaths">
+
+	<head>
+		<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+		<title>Cómputo Móvil</title>
+		<style>
+			body { font: normal 16px/20px "Helvetica Neue", Helvetica, sans-serif; background: green; margin: 10px 50px; width: 95%; height: 95%;}
+			h1 { float: right; color: white; }
+			.block { display: block; }
+			.float { display: inline; float: left; padding: 0px 10px }
+			.hide { display: none; }
+			#wrapper { width: 100%; height: 100%; margin: 0 auto; background: green; }
+			h3 { margin-bottom: 5px; }
+			#canvas { cursor: crosshair; }
+		</style>
+		<script type="text/javascript" src="https://code.jquery.com/jquery-1.4.4.min.js"></script>
+		<script type="text/javascript" src="https://jquery-ui-form.googlecode.com/svn-history/r2/trunk/js/libs/modernizr-1.6.min.js"></script>
+		<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/mootools/1.3.2/mootools-yui-compressed.js"></script>
+		<script src="/socket.io/socket.io.js"></script>
+
+		<script type="text/javascript">
+		    $(document).ready(function () {
+		        // display a warning message if canvas is not supported
+		        if (!Modernizr.canvas) {
+		            $("#message").html("<p><b>WARNING</b>: Your browser does not support HTML5's canvas feature, you won't be able to see the drawings below</p>");
+		            $("canvas").hide();
+		        } else {
+		            initialize();
+		        }
+		    });
+		</script>
+
+	    <script type="text/javascript">
+
+	      var _gaq = _gaq || [];
+	      _gaq.push(['_setAccount', 'UA-12216268-1']);
+	      _gaq.push(['_setDomainName', '.theburningmonk.com']);
+	      _gaq.push(['_trackPageview']);
+
+	      (function() {
+	        var ga = document.createElement('script'); ga.type = 'text/javascript'; ga.async = true;
+	        ga.src = ('https:' == document.location.protocol ? 'https://ssl' : 'http://www') + '.google-analytics.com/ga.js';
+	        var s = document.getElementsByTagName('script')[0]; s.parentNode.insertBefore(ga, s);
+	      })();
+	    </script>
+
+	    <script type="text/javascript">
+
+	    	// VARIABLES GLOBALES
+			var WIDTH,              // width of the canvas area
+			    HEIGHT,             // height of the canvas area
+			    canvasElement,      // the canvas element
+			    context,            // the 2D drawing context for the canvas
+			    targetElement,      // the target element
+			    targets = new Array(),  // the live targets
+			    targetId = 0,       // the current target ID
+			    redrawInterval,     // interval ID of the redraw interval
+			    messages = new Array(), // on-screen messages
+			    messageId = 0,      // the current message ID
+			    fps = 60.0,         // how frequently do we update?
+			    xSocket = 0,
+			    ySocket = 0;
+
+			// define the messages to show
+			var hitMessages = new Array();
+			hitMessages[0] = "MISS";
+			hitMessages[1] = "HIT!"; 
+			hitMessages[2] = "DOUBLE HIT!!";
+			hitMessages[3] = "HAT-TRICK!!!";
+			hitMessages[4] = "UN~BELIEVABLE!!!!";
+			hitMessages[5] = "OH MY GOSH!!";
+
+			var coordenadaX;
+			var coordenadaY;
+
+			var socket = io();
+
+			// Whenever the server emits 'new message', update the chat body
+			socket.on('new message', function (msg) {
+
+			    var coordenadas = msg.split(",");
+			    x = coordenadas[0];
+			    x = x.split("X:");
+			    y = coordenadas[1];
+			    y = y.split("Y:");
+
+			    console.log("Las coordenadas son: " + (x[1]*1200) + ", " + (y[1]*645) );
+
+			    var hitTargets = hitTest({ X: (x[1]*1200) - canvas.offsetLeft, Y: (y[1]*645) - canvas.offsetTop });
+
+				// hit the targets
+			    for (var i = 0; i < hitTargets.length; i++) {
+			        hitTargets[i].hit();
+			    }
+
+			    // use one of the defined messages if possible, otherwise use a default
+			    var hitMessage = hitMessages[hitTargets.length];
+			    if (hitMessage == undefined)
+			    {
+			        hitMessage = "TOO GOOOOOOOOD..";
+			    }
+
+			    messages.push(new Message((x[1]*1200), (y[1]*645), hitMessage, 30));
+
+			});
+
+			// define the Target 'class' to represent an on-screen target
+			var Target = new Class({
+			    initialize: function (x, y, radius, dx, dy) {
+			        var _id, _x, _y, _radius, _dx, _dy, is;
+
+			        _id = targetId++;
+
+			        // the X and Y coordinate of the top left corner
+			        _x = x;
+			        _y = y;
+
+			        // the radius of the target
+			        _radius = radius;
+
+			        // the rate of movement in the X and Y direction
+			        if (dx) {
+			            _dx = dx;
+			        } else {
+			            _dx = Math.ceil(Math.random() * 10);
+			        }
+			        if (dy) {
+			            _dy = dy;
+			        } else {
+			            _dy = Math.ceil(Math.random() * 10);
+			        }
+
+			        // getters
+			        this.getId = function () {
+			            return _id;
+			        }
+
+			        this.getX = function () {
+			            return _x;
+			        };
+
+			        this.getY = function () {
+			            return _y;
+			        };
+
+			        this.getRadius = function () {
+			            return _radius;
+			        };
+
+			        // move the target to its position for the next frame
+			        this.move = function () {
+			            _x += _dx;
+			            _y += _dy;
+
+			            // change direction in X if it 'hits' the border
+			            if ((_x + _radius * 2) >= WIDTH || _x <= 0) {
+			                _dx *= -1;
+			            }
+
+			            // change direction in Y if it 'hits' the border
+			            if ((_y + _radius * 2) >= HEIGHT || _y <= 0) {
+			                _dy *= -1;
+			            }
+			        };
+
+			        // draws the target on the canvas
+			        this.draw = function () {
+			            context.drawImage(targetElement, _x, _y);
+			        };
+
+			        // hit the target!
+			        this.hit = function () {
+			            for (var i = 0; i < targets.length; i++) {
+			                var target = targets[i];
+
+			                if (target.getId() == _id) {
+			                    targets.splice(i, 1);
+			                    var puntuacion = document.getElementById("puntuacion").innerHTML = "Puntuación: " + (20-targets.length);
+			                    break;
+			                }
+
+			            }
+
+			            
+			        };
+			    }
+			});
+
+			// define the Message 'class' to represent an on-screen message
+			var Message = new Class({
+			    initialize: function (x, y, message, duration) {
+			        var _id, _x, _y, _message, _duration;
+
+			        _id = messageId++;
+
+			        // X, Y coordinates of where to display the message
+			        _x = x;
+			        _y = y;
+
+			        // the message
+			        _message = message;
+
+			        // how many frames to display the message for
+			        _duration = duration;
+
+			        this.getId = function () {
+			            return _id;
+			        }
+
+			        this.draw = function () {
+			            if (_duration >= 0) {
+			                context.textBaseline = "middle";
+			                context.textAlign = "center";
+			                context.fillStyle = "#FFF";
+			                context.strokeStyle = "#000";
+			                context.font = "bold 70px arial";
+
+			                // draw the message at the specified X, Y coordinates
+			                context.fillText(_message, _x, _y);
+
+			                _duration--;
+			            } else {
+			                // remove the message
+			                for (var i = 0; i < messages.length; i++) {
+			                    var message = messages[i];
+
+			                    if (message.getId() == _id) {
+			                        messages.splice(i, 1);
+			                        break;
+			                    }
+			                }
+			            }
+			        }
+			    }
+			});
+
+			// Add targets to the game
+			function createTargets() {
+			    var targetRadius = targetElement.width / 2;
+
+			    for (var i = 0; i < 20; i++) {
+			        targets[i] = new Target(0, 0, targetRadius);
+			    }
+			}
+
+			// Draw the target canvas element, and initialise the global 
+			// variables so that they can be used here after
+			function initialize() {    
+			    canvasElement = document.getElementById("canvas");
+			    context = canvasElement.getContext("2d");
+
+			    WIDTH = canvasElement.width;
+			    HEIGHT = canvasElement.height;
+
+			    // initialise the target canvas
+			    targetElement = document.getElementById("target");
+			    initializeTargetCanvas(targetElement);
+
+
+			    $("#canvas").mousedown(function (mouseEvent) {
+			        // get the coordinates of the click inside the canvas
+			        var position = getPosition(mouseEvent, this);
+
+			        // find out which targets were hit
+			        var hitTargets = hitTest(position);
+
+			        // hit the targets
+			        for (var i = 0; i < hitTargets.length; i++) {
+			            hitTargets[i].hit();
+			        }
+
+			        // use one of the defined messages if possible, otherwise use a default
+			        var hitMessage = hitMessages[hitTargets.length];
+			        if (hitMessage == undefined)
+			        {
+			            hitMessage = "TOO GOOOOOOOOD..";
+			        }
+
+			        messages.push(new Message(position.X, position.Y, hitMessage, 30));
+			        
+			    });
+
+			    // put the moving targets onto the scene
+			    createTargets();
+
+
+			    // clear the canvas and start the game with a frame rate of roughly 60fps!
+			    clear();
+			    redrawInterval = setInterval(draw, 1000/fps);
+			}
+
+			// Draws the target canvas
+			function initializeTargetCanvas(element) {
+			    var baseX = 1.0, baseY = 1.0;
+
+			    // get the width and height of the element
+			    var width = (element.width - baseX * 2) / 2,
+			        height = (element.height - baseY * 2) / 2;
+
+			    // work out the necessary metrics to draw the target
+			    var radius = Math.min(width, height),
+			        centreX = baseX + radius,
+			        centreY = baseY + radius,
+			        ringWidth = radius / 10;
+
+			    // get the 2D context to start drawing the target!
+			    var context = element.getContext("2d");
+			    context.lineWidth = "2";
+
+			    // define function to draw a ring
+			    var drawRing = function (fillStyle, ringRadius) {
+			        context.fillStyle = fillStyle;
+
+			        // draw the circle
+			        context.beginPath();
+			        context.arc(centreX, centreY, ringRadius, 0, Math.PI * 2, true);
+			        context.closePath();
+
+			        context.stroke();
+			        context.fill();
+			    };
+
+			    // draw the rings for each score
+			    drawRing("#000", radius);
+			    drawRing("#FFF", radius -= (ringWidth * 2));
+			    drawRing("#000", radius -= (ringWidth * 2));
+			    drawRing("#FFF", radius -= (ringWidth * 2));
+			    drawRing("#000", radius -= (ringWidth * 2));
+			    drawRing("red", radius -= ringWidth);
+			}
+
+			// clear the canvas page
+			function clear() {
+			    context.fillStyle = "green";
+			    context.fillRect(0, 0, WIDTH, HEIGHT);
+			}
+
+			// redraw the target boards on the canvas
+			function draw() {
+			    // clear the canvas page first
+			    clear();
+
+			    // stop the redraw interval once all targets are taken out
+			    if (targets.length == 0 && messages.length == 0) {
+			        //clearInterval(redrawInterval);
+			    } else {
+			        for (var i = 0; i < targets.length; i++) {
+			            targets[i].move();
+			            targets[i].draw();
+			        }
+
+			        for (var i = 0; i < messages.length; i++) {
+			            messages[i].draw();
+			        }
+			    }
+			}
+
+			// works out the X, Y position of the click INSIDE the canvas from the X, Y 
+			// position on the page
+			function getPosition(mouseEvent, element) {
+			    var x, y;
+
+
+			    if (mouseEvent.pageX != undefined && mouseEvent.pageY != undefined) {
+			        x = mouseEvent.pageX;
+			        console.log("x es: " + mouseEvent.pageX);
+			        y = mouseEvent.pageY;
+			    } else {
+			        x = mouseEvent.clientX + document.body.scrollLeft + document.documentElement.scrollLeft;
+			        y = mouseEvent.clientY + document.body.scrollTop + document.documentElement.scrollTop;
+			    }
+
+			    return { X: x - element.offsetLeft, Y: y - element.offsetTop };
+
+			}
+
+			// check if the player managed to hit any of the live targets
+			function hitTest(position) {
+			    var hitTargets = new Array();
+
+			    // check if the position is within the bounds of any of the live targets
+			    for (var i = 0; i < targets.length; i++) {
+			        var target = targets[i];
+
+			        var targetCentreX = target.getX() + target.getRadius(),
+			            targetCentreY = target.getY() + target.getRadius();
+
+			        // work out the distance between the position and the target's centre
+			        var xdiff = position.X - targetCentreX,
+			            ydiff = position.Y - targetCentreY,
+			            dist = Math.sqrt(Math.pow(xdiff, 2) + Math.pow(ydiff, 2));
+
+			        // if that distance is less than the radius of the target then the
+			        // position is inside the target
+			        if (dist <= target.getRadius()) {
+			            hitTargets.push(target);
+			        }
+			    }
+
+			    return hitTargets;
+
+			}
+	    	
+	    </script>
+	</head>
+
+	<body>
+		<div id="wrapper">
+			<h1 id="puntuacion">Puntuación: 0</h1>
+			<aside id="message"></aside>
+			
+	        <div class="hide">
+	            <canvas id="target" width="100" height="100" class="hide">
+	        </canvas></div>
+
+			<div class="block">
+				<canvas id="canvas" class="block" width="1200" height="645" onselectstart="this.style.cursor=&#39;crosshair&#39;; return false;" style="cursor: crosshair;">
+				</canvas>
+			</div>
+		</div>
+
+	</body>
+
+</html>

@@ -1,0 +1,47 @@
+body 	
+{
+    font: normal 16px/20px "Helvetica Neue", Helvetica, sans-serif;
+    background: green;
+    margin: 10px 50px;
+}
+
+h1{
+    float: right;
+    color: white;
+}
+
+.block
+{
+    display: block;
+}
+
+.float
+{
+    display: inline;
+    float: left;
+    padding: 0px 10px
+}
+
+.hide
+{
+    display: none;
+}
+
+
+#wrapper 
+{
+    width: 100%;
+    height: 100%;
+    margin: 0 auto;
+    background: green;
+}
+
+h3
+{
+    margin-bottom: 5px;
+}
+
+#canvas
+{
+	cursor: crosshair;
+}
